@@ -1,0 +1,129 @@
+import tensorflow as tf
+from tensorflow.keras.layers import Dense, Reshape, Layer
+from tensorflow.keras import Input, Model
+from tensorflow.keras.losses import mean_squared_error
+import numpy as np
+
+from dynamics import TIME, TIMESTEPS_PER_TRAJECTORY
+
+
+class KoopmanLayer(Layer):
+    def __init__(self, dim, kernel_regularizer=None):
+        super(KoopmanLayer, self).__init__()
+        self.dim = dim
+        self.regularizer = kernel_regularizer
+        self.kernel = None
+
+    def build(self, _):
+        self.kernel = self.add_weight(
+            "kernel",
+            shape=[self.dim, self.dim],
+            regularizer=self.regularizer
+        )
+
+    def call(self, inputs):
+        matrix_exponentials = tf.convert_to_tensor([tf.linalg.expm(self.kernel * t) for t in TIME])
+        trajs = tf.einsum('ijk,lk->lij', matrix_exponentials, inputs[:, 0, :])
+        return trajs
+
+
+class KoopmanNetwork:
+    def __init__(self,
+                 input_dim, intrinsic_dim,
+                 encoder_hidden_widths, decoder_hidden_widths,
+                 activation="relu", optimizer="adam", regularizer="l2",
+                 alpha1=0.01, alpha2=0.01):
+        """
+        The main idea for a Koopman network is to solve nonlinear systems using neural networks. The idea is that
+        many nonlinear systems have some "intrinsic" linearity that we can learn. The model first encodes our
+        input system as a linear system in some intrinsic coordinate space. For example, raw neural data can be
+        extremely high-dimensional and non-linear, but the 4-dimensional nonlinear Hodgkin-Huxley model underlies spiking
+        neuron activity. The network then predicts how the system evolves in the intrinsic space before decoding that
+        prediction and returning it to the user.
+
+        :param intrinsic_dim: the dimension of the linear space that we encode our system into
+        """
+
+        # 'private' attributes
+        self._input_dim = input_dim
+        self._intrinsic_dim = intrinsic_dim
+        self._regularizer = regularizer
+        self._activation = activation
+
+        # models
+        self._encoder = self._build_coder("encoder", (None, input_dim), encoder_hidden_widths, intrinsic_dim)
+        self._decoder = self._build_coder("decoder", (None, intrinsic_dim), decoder_hidden_widths, input_dim)
+        self.autoencoder = self._build_autoencoder()
+        self._koopman = self._build_koopman(intrinsic_dim)
+        self.model = self._build_model(alpha1, alpha2)  # alpha3 is implicitly specified in the regularizer
+
+        # compile
+        self.autoencoder.compile(optimizer=optimizer, loss="mse")
+        self.model.compile(optimizer=optimizer, loss=None)  # custom loss added during _build_model()
+
+    def _build_coder(self, name: str, input_dim, hidden_widths, output_dim):
+        inp = Input(shape=input_dim, name=f"{name}_input")
+        x = inp
+        for i, w in enumerate(hidden_widths):
+            x = Dense(w, activation=self._activation, kernel_regularizer=self._regularizer, name=f"{name}_hidden{i}")(x)
+        out = Dense(output_dim, activation="linear", kernel_regularizer=self._regularizer, name=f"{name}_output")(x)
+        return Model(inp, out, name=name)
+
+    def _build_autoencoder(self):
+        """
+        encoder -> decoder
+        """
+        autoencoder_input = Input(shape=(None, self._input_dim), name="autoencoder_input")
+        autoencoder_output = self._decoder(self._encoder(autoencoder_input))
+        return Model(autoencoder_input, autoencoder_output, name="autoencoder")
+
+    def _build_koopman(self, dim):
+        koopman_input = Input(shape=(1, dim), name="koopman_input")
+        koopman_output = KoopmanLayer(dim, kernel_regularizer=self._regularizer)(koopman_input)
+        return Model(koopman_input, koopman_output, name="koopman")
+
+    def _build_model(self, alpha1, alpha2):
+        """
+        encoder -> koopman -> decoder
+        """
+        x_true = Input(shape=(None, self._input_dim), name="x_true")
+        x0 = Input(shape=(1, self._input_dim), name="model_input")
+        encoded = self._encoder(x0)
+        advanced = self._koopman(encoded)
+        decoded = self._decoder(advanced)
+        model = Model([x_true, x0], decoded, name="model")
+
+        # custom loss function
+        mse = tf.keras.losses.MeanSquaredError()
+        L_recon = mse(x0, x0_recon := self._decoder(encoded))
+        L_pred = tf.reduce_sum(mean_squared_error(x_true, decoded)) / TIMESTEPS_PER_TRAJECTORY
+        L_lin = tf.reduce_sum(mean_squared_error(self._encoder(x_true), advanced)) / TIMESTEPS_PER_TRAJECTORY
+        L_inf = tf.norm(x0 - x0_recon, ord=np.inf) + tf.norm(x_true[:, 1, :] - decoded[:, 1, :], ord=np.inf)
+        L = alpha1 * (L_recon + L_pred) + L_lin + alpha2 * L_inf
+        model.add_loss(L)
+
+        return model
+
+    def train_autoencoder(self, trajectories, epochs, batch_size):
+        x = tf.convert_to_tensor(trajectories)
+        self.autoencoder.fit(x, x, epochs=epochs, batch_size=batch_size)
+
+    def train_model(self, trajectories, epochs, batch_size):
+        x_true = tf.convert_to_tensor(trajectories)
+        x0 = x_true[:, :1, :]
+        self.model.fit([x_true, x0], x_true, epochs=epochs, batch_size=batch_size)
+
+    def autoencoder_predict(self, trajs: np.ndarray):
+        x = tf.convert_to_tensor(trajs)
+        return self.autoencoder.predict(x)
+
+    def model_predict(self, x0: np.ndarray):
+        assert x0.ndim == 2
+        num_examples, dim = x0.shape
+        x0 = tf.convert_to_tensor(np.expand_dims(x0, axis=1))
+        dummy = np.ones((num_examples, TIMESTEPS_PER_TRAJECTORY, dim))
+        return self.model.predict([dummy, x0])
+
+    def train(self, trajectories, autoencoder_epochs, autoencoder_batch_size, model_epochs, model_batch_size):
+        self.train_autoencoder(trajectories, autoencoder_epochs, autoencoder_batch_size)
+        self.train_model(trajectories, model_epochs, model_batch_size)
