@@ -33,9 +33,20 @@ kp.utils.plot([true_train, noisy_train, test],
 
 ### Training
 
-Training is extremely simple. 
+Training is extremely simple. For more advanced training routines, you can also specify an `intrinsic_dim`. For more details, see `koopman/network.py`.
 ```
 net = kp.network.KoopmanNetwork(lds.dim)
 net.train(noisy_train, autoencoder_epochs=50, autoencoder_batch_size=100, model_epochs=30, model_batch_size=10)
 ```
+### Prediction
 
+Finally, let's try predicting some data!
+```
+pred_train = net.predict(true_train[:, 0, :])
+pred_test = net.predict(test[:, 0, :])
+kp.utils.plot([true_train, pred_train], labels=["true train", "pred. train"])
+```
+Let's see how it performs on the test set.
+```
+kp.utils.plot([test, pred_test], labels=["test", "pred. test"])
+```
