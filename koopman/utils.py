@@ -9,13 +9,17 @@ def _plot2d(trajs_grid, labels: list[str] = None):
     fig = plt.figure()
     ax = fig.add_subplot()
     for i, trajs in enumerate(trajs_grid):
-        lines = LineCollection(trajs, color=f"C{i}", label=labels[i])
+        if labels is None:
+            lines = LineCollection(trajs, color=f"C{i}")
+        else:
+            lines = LineCollection(trajs, color=f"C{i}", label=labels[i])
         ax.add_collection(lines)
     minima = trajs_grid.min(axis=(0, 1, 2))
     maxima = trajs_grid.max(axis=(0, 1, 2))
     ax.set_xlim(minima[0], maxima[0])
     ax.set_ylim(minima[1], maxima[1])
-    ax.legend()
+    if labels is not None:
+        ax.legend()
     plt.show()
 
 
@@ -23,14 +27,18 @@ def _plot3d(trajs_grid, labels: list[str] = None):
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
     for i, trajs in enumerate(trajs_grid):
-        lines = Line3DCollection(trajs, color=f"C{i}", label=labels[i])
+        if labels is None:
+            lines = LineCollection(trajs, color=f"C{i}")
+        else:
+            lines = Line3DCollection(trajs, color=f"C{i}", label=labels[i])
         ax.add_collection(lines)
     minima = trajs_grid.min(axis=(0, 1, 2))
     maxima = trajs_grid.max(axis=(0, 1, 2))
     ax.set_xlim(minima[0], maxima[0])
     ax.set_ylim(minima[1], maxima[1])
     ax.set_zlim(minima[2], maxima[2])
-    ax.legend()
+    if labels is not None:
+        ax.legend()
     plt.show()
 
 

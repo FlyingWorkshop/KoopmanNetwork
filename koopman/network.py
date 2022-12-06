@@ -108,39 +108,39 @@ class KoopmanNetwork:
 
         return model
 
-    def _train_autoencoder(self, trajectories, epochs, batch_size):
+    def _train_autoencoder(self, trajectories, epochs, batch_size, verbose="auto"):
         x = tf.convert_to_tensor(trajectories)
-        self.autoencoder.fit(x, x, epochs=epochs, batch_size=batch_size)
+        self.autoencoder.fit(x, x, epochs=epochs, batch_size=batch_size, verbose=verbose)
 
-    def _train_model(self, trajectories, epochs, batch_size):
+    def _train_model(self, trajectories, epochs, batch_size, verbose="auto"):
         x_true = tf.convert_to_tensor(trajectories)
         x0 = x_true[:, :1, :]
-        self.model.fit([x_true, x0], x_true, epochs=epochs, batch_size=batch_size)
+        self.model.fit([x_true, x0], x_true, epochs=epochs, batch_size=batch_size, verbose=verbose)
 
-    def _autoencoder_predict(self, trajs: np.ndarray):
+    def _autoencoder_predict(self, trajs: np.ndarray, verbose="auto"):
         x = tf.convert_to_tensor(trajs)
-        return self.autoencoder.predict(x)
+        return self.autoencoder.predict(x, verbose=verbose)
 
-    def _model_predict(self, x0: np.ndarray):
+    def _model_predict(self, x0: np.ndarray, verbose="auto"):
         assert x0.ndim == 2
         num_examples, dim = x0.shape
         x0 = tf.convert_to_tensor(np.expand_dims(x0, axis=1))
         dummy = np.ones((num_examples, TIMESTEPS_PER_TRAJECTORY, dim))
-        return self.model.predict([dummy, x0])
+        return self.model.predict([dummy, x0], verbose=verbose)
 
-    def train(self, trajectories, autoencoder_epochs, autoencoder_batch_size, model_epochs, model_batch_size):
+    def train(self, trajectories, autoencoder_epochs, autoencoder_batch_size, model_epochs, model_batch_size, verbose="auto"):
         # dimensions = samples, n steps, dim
-        self._train_autoencoder(trajectories, autoencoder_epochs, autoencoder_batch_size)
-        self._train_model(trajectories, model_epochs, model_batch_size)
+        self._train_autoencoder(trajectories, autoencoder_epochs, autoencoder_batch_size, verbose=verbose)
+        self._train_model(trajectories, model_epochs, model_batch_size, verbose=verbose)
 
-    def predict(self, x0: np.ndarray, num_timesteps=TIMESTEPS_PER_TRAJECTORY):
+    def predict(self, x0: np.ndarray, num_timesteps=TIMESTEPS_PER_TRAJECTORY, verbose="auto"):
         """
         Wrapper for model_predict that lets you predict arbitrary number of timesteps
         """
         q, r = divmod(num_timesteps, TIMESTEPS_PER_TRAJECTORY)
         result = []
         for _ in range(q + (r != 0)):
-            result.append(self._model_predict(x0))
+            result.append(self._model_predict(x0, verbose=verbose))
             x0 = result[-1][:, -1, :]
         if r != 0:
             result[-1] = result[-1][:r]
