@@ -5,4 +5,4 @@ This repo is active! Work for this project is based on research from [Dr. Bethan
 
 
 
-![Alt Text](https://media.giphy.com/media/vFKqnCdLPNOKc/giphy.gif)
+![Alt Text](https://github.com/FlyingWorkshop/KoopmanNetwork/blob/main/auto_1.gif)
