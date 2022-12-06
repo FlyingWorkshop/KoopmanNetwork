@@ -142,7 +142,8 @@ class KoopmanNetwork:
         for _ in range(q + (r != 0)):
             result.append(self._model_predict(x0))
             x0 = result[-1][:, -1, :]
-        result[-1] = result[-1][:r]
+        if r != 0:
+            result[-1] = result[-1][:r]
         result = np.concatenate(result)
         return result
 
