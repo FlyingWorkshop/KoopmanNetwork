@@ -1,0 +1,111 @@
+* play around with noise
+* how to compare to operators (eigenvalues/eigenvalues)
+* create something to visualize eigenvectors
+* read about the "eigen spectrum" + "eigen decompisition"
+* grading rubric (think about what you want to accomplish in the quarter; break it down into a week by week set of milestones) [create a google doc]
+
+
+todo
+- get set up on sherlock
+- make loss graphs
+- implement dimension transforms [DONE]
+- implement the fucking noise [DONE]
+separate to-do item: maybe visualize after doing PCA going forward so that we can visualize the top 3 dimensions rather than the first 3. relevant as we go to higher dimensional systems.
+- optional: add snapshot to training thing to predict trajectories at different epochs so we can create a slideshow of progress :D
+
+future:
+- move to spiking neural network data
+- work with Tommy
+- closed loop stuff
+
+TEMPLATE
+
+week 5
+- train model on sherlock and save weights;
+- create a graph that looks like the screenshot in the directory; try for multiple fixed d's and fix A; pick rando W
+- get the PCA of the original trajectory data and project predicted trajectories onto the subspace [DONE]
+- connect w/ Tommy and communicate about feeding the koopman model to his testing harness [wait for Max email]
+
+PROGRESS:
+* spent 5-6 ish hours on this
+* got a sherlock account; began reading documentation about submitting tasks to the cluster; created template script
+* began creating a script to feed to the cluster, but got stuck trying to calculate loss
+Why is this difficult?
+- the model trains on noisy data, but I wan't to evaluate loss b/n the not noisy data and the predicted outcome
+- no immediatly obvious way to calculate loss
+* I redid the entire plotting pipeline (this took a lot of time)
+- it's now pretty fast and easy to use
+- automatically projects trajectories into PC subspaces if dimensions are > 3
+QUESTIONS
+- ask about putting this on github
+
+
+week 6
+- similar stuff from week 5 but w/ SNN
+TODO:
+* use the simple "loss" (reduce_mean(MSE(predicted, true))) to create the visualization that Max wants
+- plot "test loss" and "training loss"
+- "in-distribution" and "out-of-distribution" [good to make sure that test init conds are out of the "spawn range" for the training init conds]
+* feed script to cluster
+* input SNN data
+* put stuff on github
+- data input like: [Max will tell later]
+
+for every intrinsic dim:
+- for every input dim:
+-- make 10 Ws
+--- for every W
+---- make 10 As [CHANGED THIS; moved it to be the same]
+----- for every A
+------ train one network
+---- calculate the "test loss" (reduce_mean(MSE(pred, true))
+----- to get the plot average the test loss over W's and then average it across A's
+
+
+TODO:
+- convert main script to take command line arguments
+- rerun script on sherlock but allocate a different core to each task
+
+
+
+PAPER: https://openreview.net/pdf?id=pY9MHwmrymR
+
+week 7
+- more exploration of SNN stuff
+-
+week 8
+- TODO: be able to predict and train off a variable number of timesteps
+- use supercomputer (make sure to ml activate python 3 and all necessary dependencies; https://www.sherlock.stanford.edu/docs/software/using/python/#python-packages)
+- use ml spider numpy to get all versions of numpy
+week 9
+- meet w/ Tommy in person
+- look into weirdly high model loss [use avg euclidean distance rather than MSE]
+- redo koopman demo
+week 10
+
+
+Nov 30 Meeting:
+- text tommy to schedule meeting in person so can wrap model properly [done!]
+- show model loss over time in plot [in progress]
+- make sherlock script better [logan will do this this week/tn]
+- dump better version into github once modified [pending prior taks]
+- discuss SNN stuff and fit that tn
+- logistics for 5 goals [done!]
+
+
+TODO: - get parallelization working!
+
+
+
+BIG GOAL for end of fall quarter: (do this for A++ and cookies)
+- spiking neural network data
+- getting the error plot form week 5
+- work w/ Tommy to design interface
+- help Tommy run stuff on Sherlock + help him refactor his codebase to be OOP
+
+
+WINTER:
+- begin summary write up [winter]
+- begin active learning for closed loop control [winter]
+- june paper deadline for tommy-logan (benchmark) paper
+- logan paper deadline is less clear

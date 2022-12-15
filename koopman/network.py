@@ -108,7 +108,7 @@ class KoopmanNetwork:
 
         return model
 
-    def _train_autoencoder(self, trajectories, epochs, batch_size, verbose="auto"):
+    def train_autoencoder(self, trajectories, epochs, batch_size, verbose="auto"):
         x = tf.convert_to_tensor(trajectories)
         self.autoencoder.fit(x, x, epochs=epochs, batch_size=batch_size, verbose=verbose)
 
@@ -130,7 +130,7 @@ class KoopmanNetwork:
 
     def train(self, trajectories, autoencoder_epochs, autoencoder_batch_size, model_epochs, model_batch_size, verbose="auto"):
         # dimensions = samples, n steps, dim
-        self._train_autoencoder(trajectories, autoencoder_epochs, autoencoder_batch_size, verbose=verbose)
+        self.train_autoencoder(trajectories, autoencoder_epochs, autoencoder_batch_size, verbose=verbose)
         self._train_model(trajectories, model_epochs, model_batch_size, verbose=verbose)
 
     def predict(self, x0: np.ndarray, num_timesteps=TIMESTEPS_PER_TRAJECTORY, verbose="auto"):
