@@ -1,0 +1,4 @@
+# exclude everything except directory foo/bar
+/*
+!/koopman
+!koopman_demo.ipynb
