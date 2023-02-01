@@ -1,4 +1,5 @@
 # exclude everything except directory foo/bar
 /*
 !/koopman
+/koopman/__pycache__
 !koopman_demo.ipynb
