@@ -54,7 +54,8 @@ class KoopmanNetwork:
             self._intrinsic_dim = intrinsic_dim
         self._regularizer = regularizer
         self._activation = activation
-        self._early_stopping = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3, min_delta=1e-3, restore_best_weights=True)
+        self._autoencoder_early_stopping = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3, min_delta=1, restore_best_weights=True)
+        self._model_early_stopping = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3, min_delta=10, restore_best_weights=True)
 
         # models
         self._encoder = self._build_coder("encoder", (None, self._input_dim), encoder_hidden_widths, self._intrinsic_dim)
@@ -65,7 +66,7 @@ class KoopmanNetwork:
 
         # compile
         self.autoencoder.compile(optimizer=optimizer, loss="mse")
-        self.model.compile(optimizer=optimizer, loss=None)  # custom loss added during _build_model()
+        self.model.compile(optimizer=optimizer, metrics=[tf.keras.metrics.MeanSquaredError()], loss=None)  # custom loss and other metrics added during _build_model()
 
     def _build_coder(self, name: str, input_dim, hidden_widths, output_dim):
         inp = Input(shape=input_dim, name=f"{name}_input")
@@ -119,24 +120,18 @@ class KoopmanNetwork:
 
     def _train_autoencoder(self, trajectories, epochs, batch_size, verbose="auto"):
         x = tf.convert_to_tensor(trajectories)
-        self.autoencoder.fit(x, x, callbacks=[self._early_stopping],
+        self.autoencoder.fit(x, x, callbacks=[self._autoencoder_early_stopping],
                              epochs=epochs, batch_size=batch_size, verbose=verbose)
 
-    def _train_model(self, trajectories, epochs, batch_size, log="", verbose="auto"):
+    def _train_model(self, trajectories, epochs, batch_size, filename="", verbose="auto"):
         x_true = tf.convert_to_tensor(trajectories)
         x0 = x_true[:, :1, :]
-        callbacks = [self._early_stopping]
-        if log:
-            callbacks.append(CSVLogger(log))
+        callbacks = [self._model_early_stopping]
+        if filename:
+            callbacks.append(CSVLogger(filename))
 
-        # TODO: add validation data to model
-        self.model.fit([x_true, x0], x_true,
-                       callbacks=callbacks,
-                       epochs=epochs,
-                       batch_size=batch_size,
-                       verbose=verbose,
-                       # validation_data=,
-                       )
+        self.model.fit([x_true, x0], x_true, callbacks=callbacks,
+                       epochs=epochs, batch_size=batch_size, verbose=verbose, validation_split=0.9)
 
     def _autoencoder_predict(self, trajs: np.ndarray, verbose="auto"):
         x = tf.convert_to_tensor(trajs)
@@ -149,10 +144,10 @@ class KoopmanNetwork:
         dummy = np.ones((num_examples, TIMESTEPS_PER_TRAJECTORY, dim))
         return self.model.predict([dummy, x0], verbose=verbose)
 
-    def train(self, trajectories, autoencoder_epochs, autoencoder_batch_size, model_epochs, model_batch_size, log="", verbose="auto"):
+    def train(self, trajectories, autoencoder_epochs, autoencoder_batch_size, model_epochs, model_batch_size, filename="", verbose="auto"):
         # dimensions = samples, n steps, dim
         self._train_autoencoder(trajectories, autoencoder_epochs, autoencoder_batch_size, verbose=verbose)
-        self._train_model(trajectories, model_epochs, model_batch_size, log=log, verbose=verbose)
+        self._train_model(trajectories, model_epochs, model_batch_size, filename=filename, verbose=verbose)
 
     def predict(self, x0: np.ndarray, num_timesteps=TIMESTEPS_PER_TRAJECTORY, verbose="auto"):
         """

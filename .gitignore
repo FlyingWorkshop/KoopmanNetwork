@@ -3,3 +3,6 @@
 !/koopman
 /koopman/__pycache__
 !koopman_demo.ipynb
+!main.py
+!submit.sh
+!requirements.txt
