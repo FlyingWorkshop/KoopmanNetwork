@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Dense, Layer
 from tensorflow.keras.losses import mean_squared_error
-from keras.callbacks import CSVLogger
+from tensorflow.keras.callbacks import CSVLogger
 
 
 from .dynamics import TIME, TIMESTEPS_PER_TRAJECTORY
@@ -32,7 +32,7 @@ class KoopmanLayer(Layer):
 class KoopmanNetwork:
     def __init__(self,
                  input_dim, intrinsic_dim=None,
-                 encoder_hidden_widths=(10, 10), decoder_hidden_widths=(10, 10),
+                 encoder_hidden_widths=(80, 80), decoder_hidden_widths=(80, 80),
                  activation="relu", optimizer="adam", regularizer="l2",
                  alpha1=0.01, alpha2=0.01):
         """
@@ -131,7 +131,7 @@ class KoopmanNetwork:
             callbacks.append(CSVLogger(filename))
 
         self.model.fit([x_true, x0], x_true, callbacks=callbacks,
-                       epochs=epochs, batch_size=batch_size, verbose=verbose, validation_split=0.9)
+                       epochs=epochs, batch_size=batch_size, verbose=verbose, validation_split=0.2)
 
     def _autoencoder_predict(self, trajs: np.ndarray, verbose="auto"):
         x = tf.convert_to_tensor(trajs)
