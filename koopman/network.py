@@ -1,12 +1,99 @@
+import collections
+import csv
+from pathlib import Path
+
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import Input, Model
-from tensorflow.keras.layers import Dense, Layer
-from tensorflow.keras.losses import mean_squared_error
-from tensorflow.keras.callbacks import CSVLogger
+from keras.utils import io_utils
+from tensorflow.python.keras import Input, Model
+from tensorflow.python.keras.callbacks import CSVLogger, EarlyStopping, Callback
+from tensorflow.python.keras.layers import Dense, Layer
+from tensorflow.python.keras.losses import mean_squared_error
+
+from .constants import TIME, TIMESTEPS_PER_TRAJECTORY, CACHE, MAX_LINES
+from .utils import _rand_alphanumeric
 
 
-from .dynamics import TIME, TIMESTEPS_PER_TRAJECTORY
+class Recorder(Callback):
+    """
+    Adapted from CSVLogger
+    """
+
+    def __init__(self, x, filename, max_lines=MAX_LINES, separator=",", append=False):
+        x = x[:max_lines]
+        self.gold_filename = f"{filename.removesuffix('.csv')}-gold"
+        np.save(self.gold_filename, x)  # saves x as a *.npy file
+
+        x0 = x[:, 0, :]
+        assert x0.ndim == 2
+        x0 = tf.convert_to_tensor(np.expand_dims(x0, axis=1))
+        self.x = [x, x0]  # NOTE: x isn't really used besides as a dummy input
+
+        # CSVLogger inheritance
+        self.sep = separator
+        self.filename = io_utils.path_to_string(filename)
+        self.append = append
+        self.writer = None
+        self.keys = None
+        self.append_header = True
+        super().__init__()
+
+    def on_train_begin(self, logs=None):
+        if self.append:
+            if tf.io.gfile.exists(self.filename):
+                with tf.io.gfile.GFile(self.filename, "r") as f:
+                    self.append_header = not bool(len(f.readline()))
+            mode = "a"
+        else:
+            mode = "w"
+        self.csv_file = tf.io.gfile.GFile(self.filename, mode)
+
+    def on_epoch_end(self, epoch, logs=None):
+        pred = self.model.predict(self.x, verbose=0)
+        logs = {"trajs": pred.flatten()}
+
+        def handle_value(k):
+            is_zero_dim_ndarray = isinstance(k, np.ndarray) and k.ndim == 0
+            if isinstance(k, str):
+                return k
+            elif (
+                    isinstance(k, collections.abc.Iterable)
+                    and not is_zero_dim_ndarray
+            ):
+                return ', '.join(map(str, k))
+            else:
+                return k
+
+        if self.keys is None:
+            self.keys = sorted(logs.keys())
+
+        if self.model.stop_training:
+            # We set NA so that csv parsers do not fail for this last epoch.
+            logs = dict(
+                (k, logs[k]) if k in logs else (k, "NA") for k in self.keys
+            )
+
+        if not self.writer:
+
+            class CustomDialect(csv.excel):
+                delimiter = self.sep
+
+            fieldnames = ["epoch"] + self.keys
+
+            self.writer = csv.DictWriter(
+                self.csv_file, fieldnames=fieldnames, dialect=CustomDialect
+            )
+            if self.append_header:
+                self.writer.writeheader()
+
+        row_dict = collections.OrderedDict({"epoch": epoch})
+        row_dict.update((key, handle_value(logs[key])) for key in self.keys)
+        self.writer.writerow(row_dict)
+        self.csv_file.flush()
+
+    def on_train_end(self, logs=None):
+        self.csv_file.close()
+        self.writer = None
 
 
 class KoopmanLayer(Layer):
@@ -31,10 +118,16 @@ class KoopmanLayer(Layer):
 
 class KoopmanNetwork:
     def __init__(self,
-                 input_dim, intrinsic_dim=None,
-                 encoder_hidden_widths=(80, 80), decoder_hidden_widths=(80, 80),
-                 activation="relu", optimizer="adam", regularizer="l2",
-                 alpha1=0.01, alpha2=0.01):
+                 input_dim,
+                 intrinsic_dim=None,
+                 encoder_hidden_widths=(80, 80),
+                 decoder_hidden_widths=(80, 80),
+                 activation="relu",
+                 optimizer="adam",
+                 regularizer="l2",
+                 alpha1=0.01,
+                 alpha2=0.01,
+                 ):
         """
         The main idea for a Koopman network is to solve nonlinear systems using neural networks. The idea is that
         many nonlinear systems have some "intrinsic" linearity that we can learn. The model first encodes our
@@ -45,28 +138,37 @@ class KoopmanNetwork:
 
         :param intrinsic_dim: the dimension of the linear space that we encode our system into
         """
+        # establish cache
+        Path(CACHE).mkdir(exist_ok=True)
+        self._filename = f"{CACHE}/{_rand_alphanumeric()}"
 
         # 'private' attributes
         self._input_dim = input_dim
-        if intrinsic_dim is None:
-            self._intrinsic_dim = input_dim
-        else:
-            self._intrinsic_dim = intrinsic_dim
+        self._intrinsic_dim = intrinsic_dim or input_dim
         self._regularizer = regularizer
         self._activation = activation
-        self._autoencoder_early_stopping = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3, min_delta=1, restore_best_weights=True)
-        self._model_early_stopping = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3, min_delta=10, restore_best_weights=True)
+
+        # callbacks
+        self._autoencoder_callbacks = [
+            EarlyStopping(monitor='loss', patience=3, min_delta=1, restore_best_weights=True)
+        ]
+        self._model_callbacks = [
+            EarlyStopping(monitor='loss', patience=3, min_delta=10, restore_best_weights=True),
+            CSVLogger(f"{self._filename}.csv")
+        ]
 
         # models
-        self._encoder = self._build_coder("encoder", (None, self._input_dim), encoder_hidden_widths, self._intrinsic_dim)
-        self._decoder = self._build_coder("decoder", (None, self._intrinsic_dim), decoder_hidden_widths, self._input_dim)
+        self._encoder = self._build_coder("encoder", (None, self._input_dim), encoder_hidden_widths,
+                                          self._intrinsic_dim)
+        self._decoder = self._build_coder("decoder", (None, self._intrinsic_dim), decoder_hidden_widths,
+                                          self._input_dim)
         self.autoencoder = self._build_autoencoder()
         self._koopman = self._build_koopman(self._intrinsic_dim)
         self.model = self._build_model(alpha1, alpha2)  # alpha3 is implicitly specified in the regularizer
 
         # compile
         self.autoencoder.compile(optimizer=optimizer, loss="mse")
-        self.model.compile(optimizer=optimizer, metrics=[tf.keras.metrics.MeanSquaredError()], loss=None)  # custom loss and other metrics added during _build_model()
+        self.model.compile(optimizer=optimizer, loss=None)  # custom loss and other metrics added during _build_model()
 
     def _build_coder(self, name: str, input_dim, hidden_widths, output_dim):
         inp = Input(shape=input_dim, name=f"{name}_input")
@@ -95,6 +197,7 @@ class KoopmanNetwork:
         """
         x_true = Input(shape=(None, self._input_dim), name="x_true")
         x0 = Input(shape=(1, self._input_dim), name="model_input")
+
         encoded = self._encoder(x0)
         advanced = self._koopman(encoded)
         decoded = self._decoder(advanced)
@@ -118,36 +221,86 @@ class KoopmanNetwork:
 
         return model
 
-    def _train_autoencoder(self, trajectories, epochs, batch_size, verbose="auto"):
+    def _make_recorders(self, record):
+        recorders = [Recorder(x, f"{self._filename}-{label}-recording.csv") for x, label in record]
+        return recorders
+
+    def train_autoencoder(self, trajectories, epochs, batch_size, verbose="auto"):
         x = tf.convert_to_tensor(trajectories)
-        self.autoencoder.fit(x, x, callbacks=[self._autoencoder_early_stopping],
+        self.autoencoder.fit(x, x, callbacks=self._autoencoder_callbacks,
                              epochs=epochs, batch_size=batch_size, verbose=verbose)
 
-    def _train_model(self, trajectories, epochs, batch_size, filename="", verbose="auto"):
+    def train_model(self,
+                    trajectories,
+                    epochs,
+                    batch_size,
+                    validation_split=0.2,
+                    validation_freq=1,
+                    verbose="auto",
+                    record=None,
+                    ):
+        if record is None:
+            record = []
         x_true = tf.convert_to_tensor(trajectories)
         x0 = x_true[:, :1, :]
-        callbacks = [self._model_early_stopping]
-        if filename:
-            callbacks.append(CSVLogger(filename))
 
-        self.model.fit([x_true, x0], x_true, callbacks=callbacks,
-                       epochs=epochs, batch_size=batch_size, verbose=verbose, validation_split=0.2)
+        recorders = self._make_recorders(record)
+        self._model_callbacks += recorders
 
-    def _autoencoder_predict(self, trajs: np.ndarray, verbose="auto"):
+        self.model.fit([x_true, x0],
+                       x_true,
+                       epochs=epochs,
+                       batch_size=batch_size,
+                       validation_split=validation_split,
+                       validation_freq=validation_freq,
+                       callbacks=self._model_callbacks,
+                       verbose=verbose)
+
+    def autoencoder_predict(self, trajs: np.ndarray, verbose="auto"):
         x = tf.convert_to_tensor(trajs)
         return self.autoencoder.predict(x, verbose=verbose)
 
-    def _model_predict(self, x0: np.ndarray, verbose="auto"):
+    def model_predict(self, x0: np.ndarray, verbose="auto"):
         assert x0.ndim == 2
         num_examples, dim = x0.shape
         x0 = tf.convert_to_tensor(np.expand_dims(x0, axis=1))
         dummy = np.ones((num_examples, TIMESTEPS_PER_TRAJECTORY, dim))
         return self.model.predict([dummy, x0], verbose=verbose)
 
-    def train(self, trajectories, autoencoder_epochs, autoencoder_batch_size, model_epochs, model_batch_size, filename="", verbose="auto"):
+    def model_evaluate(self, x0: np.ndarray, x, verbose="auto"):
+        """
+        # TODO: write a general evaluate method for evaluating on an arbitrary number of timesteps
+        """
+        assert x0.ndim == 2
+        num_examples, dim = x0.shape
+        x0 = tf.convert_to_tensor(np.expand_dims(x0, axis=1))
+        dummy = np.ones((num_examples, TIMESTEPS_PER_TRAJECTORY, dim))
+        return self.model.evaluate([dummy, x0], x, return_dict=True, verbose=verbose)
+
+    def train(self,
+              trajectories,
+              autoencoder_epochs,
+              autoencoder_batch_size,
+              model_epochs,
+              model_batch_size,
+              validation_split=0.2,
+              validation_freq=1,
+              record=None,
+              verbose="auto"):
         # dimensions = samples, n steps, dim
-        self._train_autoencoder(trajectories, autoencoder_epochs, autoencoder_batch_size, verbose=verbose)
-        self._train_model(trajectories, model_epochs, model_batch_size, filename=filename, verbose=verbose)
+        if record is None:
+            record = []
+        self.train_autoencoder(trajectories,
+                               autoencoder_epochs,
+                               autoencoder_batch_size,
+                               verbose=verbose)
+        self.train_model(trajectories,
+                         model_epochs,
+                         model_batch_size,
+                         validation_split=validation_split,
+                         validation_freq=validation_freq,
+                         verbose=verbose,
+                         record=record)
 
     def predict(self, x0: np.ndarray, num_timesteps=TIMESTEPS_PER_TRAJECTORY, verbose="auto"):
         """
@@ -156,7 +309,7 @@ class KoopmanNetwork:
         q, r = divmod(num_timesteps, TIMESTEPS_PER_TRAJECTORY)
         result = []
         for _ in range(q + (r != 0)):
-            result.append(self._model_predict(x0, verbose=verbose))
+            result.append(self.model_predict(x0, verbose=verbose))
             x0 = result[-1][:, -1, :]
         if r != 0:
             result[-1] = result[-1][:r]

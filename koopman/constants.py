@@ -1,0 +1,7 @@
+import numpy as np
+
+
+CACHE = "cache"
+MAX_LINES = 30
+TIMESTEPS_PER_TRAJECTORY = 50
+TIME = np.linspace(0, 1, TIMESTEPS_PER_TRAJECTORY)

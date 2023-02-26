@@ -4,4 +4,6 @@
 /koopman/__pycache__
 !koopman_demo.ipynb
 !main.py
+!recorder.py
+!producer.ipynb
 !submit.sh
