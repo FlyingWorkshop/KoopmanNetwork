@@ -153,7 +153,7 @@ class KoopmanNetwork:
             EarlyStopping(monitor='loss', patience=3, min_delta=1, restore_best_weights=True)
         ]
         self._model_callbacks = [
-            EarlyStopping(monitor='loss', patience=3, min_delta=10, restore_best_weights=True),
+            EarlyStopping(monitor='loss', patience=3, min_delta=1, restore_best_weights=True),
             CSVLogger(f"{self._filename}.csv")
         ]
 
