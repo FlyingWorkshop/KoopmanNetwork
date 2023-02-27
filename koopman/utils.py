@@ -89,8 +89,10 @@ def plot(trajs_grid: list, target_dim=2, pca=None, max_lines=MAX_LINES, labels: 
         pca = pca or make_pca(trajs_grid, n_components=target_dim)
         return _plot4d(trajs_grid, pca, labels)
 
+
 def _rand_alphanumeric():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+
 
 def load_recording(filename, max_lines=MAX_LINES):
     recording = pd.read_csv(filename)
@@ -98,6 +100,7 @@ def load_recording(filename, max_lines=MAX_LINES):
     trajs = np.array([np.fromstring(s, sep=",", dtype=float) for s in recording['trajs']])
     trajs = trajs.reshape((epochs, max_lines, TIMESTEPS_PER_TRAJECTORY, -1))
     return trajs
+
 
 def _animate2d(animated_trajs_grids, animated_labels, static_trajs_grid, static_labels):
     # create figure and axis
@@ -127,6 +130,7 @@ def _animate2d(animated_trajs_grids, animated_labels, static_trajs_grid, static_
     ax.legend()
     recording = animation.ArtistAnimation(fig, animated_artists, interval=40, blit=True)
     return recording
+
 
 def _animate3d(animated_trajs_grids, animated_labels, static_trajs_grid, static_labels):
     # create figure and axis
@@ -158,12 +162,12 @@ def _animate3d(animated_trajs_grids, animated_labels, static_trajs_grid, static_
     recording = animation.ArtistAnimation(fig, animated_artists, interval=40, blit=True)
     return recording
 
+
 def _animate4d(animated_trajs_grids,
                animated_labels,
                static_trajs_grid,
                static_labels,
                pca: PCA):
-
     assert pca.n_components == 2 or pca.n_components == 3
     animated_trajs_grids = _apply_pca_to_grid(animated_trajs_grids, pca)
     static_trajs_grid = _apply_pca_to_grid(static_trajs_grid, pca)
@@ -173,7 +177,6 @@ def _animate4d(animated_trajs_grids,
         return _animate3d(animated_trajs_grids, animated_labels, static_trajs_grid, static_labels)
 
 
-
 def animate(animated_trajs_grids: list[np.ndarray],
             animated_labels: list[str],
             static_trajs_grid: list,
@@ -181,7 +184,6 @@ def animate(animated_trajs_grids: list[np.ndarray],
             target_dim=2,
             pca=None,
             max_lines=MAX_LINES):
-
     # clip trajectories
     animated_trajs_grids = np.array(animated_trajs_grids)[:, :, :max_lines]
     static_trajs_grid = np.array([elem[:max_lines] for elem in static_trajs_grid])
@@ -195,3 +197,18 @@ def animate(animated_trajs_grids: list[np.ndarray],
     else:
         pca = pca or make_pca(static_trajs_grid, n_components=target_dim)
         return _animate4d(animated_trajs_grids, animated_labels, static_trajs_grid, static_labels, pca)
+
+
+def make_recording(tag, target_dim=2, pca=None, max_lines=MAX_LINES):
+    in_dist_gold = np.load(f"cache/{tag}-in-dist-gold.npy")
+    out_dist_gold = np.load(f"cache/{tag}-out-dist-gold.npy")
+    in_dist_preds = load_recording(f"cache/{tag}-in-dist-preds.csv")
+    out_dist_preds = load_recording(f"cache/{tag}-out-dist-preds.csv")
+    recording = animate(animated_trajs_grids=[in_dist_preds, out_dist_preds],
+                        animated_labels=["in dist. pred", "out dist. pred"],
+                        static_trajs_grid=[in_dist_gold, out_dist_gold],
+                        static_labels=["in dist. gold", "out dist. gold"],
+                        target_dim=target_dim,
+                        pca=pca,
+                        max_lines=max_lines)
+    return recording

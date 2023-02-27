@@ -21,7 +21,7 @@ class Recorder(Callback):
 
     def __init__(self, x, filename, max_lines=MAX_LINES, separator=",", append=False):
         x = x[:max_lines]
-        self.gold_filename = f"{filename.removesuffix('.csv')}-gold"
+        self.gold_filename = f"{filename}-gold"
         np.save(self.gold_filename, x)  # saves x as a *.npy file
 
         x0 = x[:, 0, :]
@@ -31,7 +31,7 @@ class Recorder(Callback):
 
         # CSVLogger inheritance
         self.sep = separator
-        self.filename = io_utils.path_to_string(filename)
+        self.filename = io_utils.path_to_string(f"{filename}-preds.csv")
         self.append = append
         self.writer = None
         self.keys = None
@@ -222,7 +222,7 @@ class KoopmanNetwork:
         return model
 
     def _make_recorders(self, record):
-        recorders = [Recorder(x, f"{self._filename}-{label}-recording.csv") for x, label in record]
+        recorders = [Recorder(x, f"{self._filename}-{label}") for x, label in record]
         return recorders
 
     def train_autoencoder(self, trajectories, epochs, batch_size, verbose="auto"):
