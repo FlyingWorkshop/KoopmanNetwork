@@ -150,10 +150,16 @@ class KoopmanNetwork:
 
         # callbacks
         self._autoencoder_callbacks = [
-            EarlyStopping(monitor='loss', patience=3, min_delta=1, restore_best_weights=True)
+            EarlyStopping(monitor='loss',
+                          patience=10,
+                          min_delta=1e4,
+                          restore_best_weights=True)
         ]
         self._model_callbacks = [
-            EarlyStopping(monitor='loss', patience=3, min_delta=1, restore_best_weights=True),
+            EarlyStopping(monitor='val-loss',
+                          patience=10,
+                          min_delta=1e5,
+                          restore_best_weights=True),
             CSVLogger(f"{self._filename}.csv")
         ]
 

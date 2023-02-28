@@ -16,14 +16,14 @@ class LDS:
         self.A = np.array(A, dtype=np.float64)
         self.dim = self.A.shape[0]
 
-    def make_rand_trajs(self, low, high, num_trajs, noise_var=0.1):
+    def make_trajs(self, low, high, num_trajs):
         init_conds = RNG.integers(low, high, size=(num_trajs, self.dim))
-        trajs = self._calc_trajs(self.A, init_conds, TIME)
-        if noise_var:
-            noisy_trajs = self._calc_noisy_trajs(self.A, init_conds, TIME, noise_var)
-            return trajs, noisy_trajs
-        else:
-            return trajs
+        return self._calc_trajs(self.A, init_conds, TIME)
+
+    def make_noisy_trajs(self, low, high, num_trajs, noise_var=0.01):
+        init_conds = RNG.integers(low, high, size=(num_trajs, self.dim))
+        noisy_trajs = self._calc_noisy_trajs(self.A, init_conds, TIME, noise_var)
+        return noisy_trajs
 
     @staticmethod
     def _calc_trajs(A, init_conds, time=TIME):
