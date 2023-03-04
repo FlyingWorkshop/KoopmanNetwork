@@ -11,18 +11,22 @@ from tensorflow.python.keras.layers import Dense, Layer
 from tensorflow.python.keras.losses import mean_squared_error
 
 from .constants import TIME, TIMESTEPS_PER_TRAJECTORY, CACHE, MAX_LINES
-from .utils import _rand_alphanumeric
+from .utils import _rand_alphanumeric, make_pca, _apply_pca_to_grid
 
 
 class Recorder(Callback):
     """
     Adapted from CSVLogger
     """
-
-    def __init__(self, x, filename, max_lines=MAX_LINES, separator=",", append=False):
+    def __init__(self, x, filename, pca=None, max_lines=MAX_LINES, separator=",", append=False):
         x = x[:max_lines]
+        self.pca = pca
         self.gold_filename = f"{filename}-gold"
-        np.save(self.gold_filename, x)  # saves x as a *.npy file
+        if self.pca is not None:
+            x_proj = _apply_pca_to_grid(x, pca)
+            np.save(self.gold_filename, x_proj)  # saves x projected onto PCA subspace as a *.npy file
+        else:
+            np.save(self.gold_filename, x)
 
         x0 = x[:, 0, :]
         assert x0.ndim == 2
@@ -50,6 +54,9 @@ class Recorder(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         pred = self.model.predict(self.x, verbose=0)
+        if self.pca is not None:
+            pred = _apply_pca_to_grid(pred, self.pca)
+
         logs = {"trajs": pred.flatten()}
 
         def handle_value(k):
@@ -156,7 +163,7 @@ class KoopmanNetwork:
                           restore_best_weights=True)
         ]
         self._model_callbacks = [
-            EarlyStopping(monitor='val-loss',
+            EarlyStopping(monitor='val_loss',
                           patience=10,
                           min_delta=1e5,
                           restore_best_weights=True),
@@ -227,8 +234,10 @@ class KoopmanNetwork:
 
         return model
 
-    def _make_recorders(self, record):
-        recorders = [Recorder(x, f"{self._filename}-{label}") for x, label in record]
+    def _make_recorders(self, record, record_dim=-1):
+        trajs = np.array([elem[0] for elem in record])
+        pca = None if record_dim == -1 else make_pca(trajs, record_dim)
+        recorders = [Recorder(x, f"{self._filename}-{label}", pca) for x, label in record]
         return recorders
 
     def train_autoencoder(self, trajectories, epochs, batch_size, verbose="auto"):
@@ -244,13 +253,14 @@ class KoopmanNetwork:
                     validation_freq=1,
                     verbose="auto",
                     record=None,
+                    record_dim=-1,  # ignored if record is None or record_dim=-1
                     ):
         if record is None:
             record = []
         x_true = tf.convert_to_tensor(trajectories)
         x0 = x_true[:, :1, :]
 
-        recorders = self._make_recorders(record)
+        recorders = self._make_recorders(record, record_dim)
         self._model_callbacks += recorders
 
         self.model.fit([x_true, x0],
@@ -292,6 +302,7 @@ class KoopmanNetwork:
               validation_split=0.2,
               validation_freq=1,
               record=None,
+              record_dim=-1,
               verbose="auto"):
         # dimensions = samples, n steps, dim
         if record is None:
@@ -306,7 +317,9 @@ class KoopmanNetwork:
                          validation_split=validation_split,
                          validation_freq=validation_freq,
                          verbose=verbose,
-                         record=record)
+                         record=record,
+                         record_dim=record_dim
+                         )
 
     def predict(self, x0: np.ndarray, num_timesteps=TIMESTEPS_PER_TRAJECTORY, verbose="auto"):
         """

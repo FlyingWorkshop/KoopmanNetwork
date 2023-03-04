@@ -19,7 +19,8 @@ def main(input_dim, intrinsic_dim, autoencoder_epochs, model_epochs):
               autoencoder_batch_size=128,
               model_epochs=model_epochs,
               model_batch_size=128,
-              record=[(in_dist, "in-dist"), (out_dist, "out-dist")]
+              record=[(in_dist, "in-dist"), (out_dist, "out-dist")],
+              record_dim=min(intrinsic_dim, 3)
               )
 
 

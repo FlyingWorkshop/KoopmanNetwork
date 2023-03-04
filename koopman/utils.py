@@ -177,10 +177,10 @@ def _animate4d(animated_trajs_grids,
         return _animate3d(animated_trajs_grids, animated_labels, static_trajs_grid, static_labels)
 
 
-def animate(animated_trajs_grids: list[np.ndarray],
-            animated_labels: list[str],
+def animate(animated_trajs_grids: list,
+            animated_labels: list,
             static_trajs_grid: list,
-            static_labels: list[str],
+            static_labels: list,
             target_dim=2,
             pca=None,
             max_lines=MAX_LINES):
