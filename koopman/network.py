@@ -54,10 +54,12 @@ class Recorder(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         pred = self.model.predict(self.x, verbose=0)
+        error = tf.reduce_sum(mean_squared_error(self.x[0], pred)).numpy()
+
         if self.pca is not None:
             pred = _apply_pca_to_grid(pred, self.pca)
 
-        logs = {"trajs": pred.flatten()}
+        logs = {"trajs": pred.flatten(), "mse": error}
 
         def handle_value(k):
             is_zero_dim_ndarray = isinstance(k, np.ndarray) and k.ndim == 0
@@ -134,6 +136,8 @@ class KoopmanNetwork:
                  regularizer="l2",
                  alpha1=0.01,
                  alpha2=0.01,
+                 autoencoder_early_stopping=True,
+                 model_early_stopping=True,
                  ):
         """
         The main idea for a Koopman network is to solve nonlinear systems using neural networks. The idea is that
@@ -147,7 +151,7 @@ class KoopmanNetwork:
         """
         # establish cache
         Path(CACHE).mkdir(exist_ok=True)
-        self._filename = f"{CACHE}/{_rand_alphanumeric()}"
+        self._filename = f"{CACHE}/{input_dim}-{intrinsic_dim}-{_rand_alphanumeric()}"
 
         # 'private' attributes
         self._input_dim = input_dim
@@ -156,19 +160,16 @@ class KoopmanNetwork:
         self._activation = activation
 
         # callbacks
-        self._autoencoder_callbacks = [
-            EarlyStopping(monitor='loss',
-                          patience=10,
-                          min_delta=1e4,
-                          restore_best_weights=True)
-        ]
-        self._model_callbacks = [
-            EarlyStopping(monitor='val_loss',
-                          patience=10,
-                          min_delta=1e5,
-                          restore_best_weights=True),
-            CSVLogger(f"{self._filename}.csv")
-        ]
+        self._autoencoder_callbacks = []
+        if autoencoder_early_stopping:
+            self._autoencoder_callbacks.append(
+                EarlyStopping(monitor='loss', patience=100, min_delta=1e4, restore_best_weights=True)
+            )
+        self._model_callbacks = [CSVLogger(f"{self._filename}.csv")]
+        if model_early_stopping:
+            self._model_callbacks.append(
+                EarlyStopping(monitor='val_loss', patience=500, min_delta=1e5, restore_best_weights=True)
+            )
 
         # models
         self._encoder = self._build_coder("encoder", (None, self._input_dim), encoder_hidden_widths,

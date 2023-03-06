@@ -13,7 +13,7 @@ def main(input_dim, intrinsic_dim, autoencoder_epochs, model_epochs):
     train = lds.make_noisy_trajs(0, 50, 20000, noise_var=0.01) @ W
     in_dist = lds.make_trajs(0, 50, kp.constants.MAX_LINES) @ W
     out_dist = lds.make_trajs(-50, 0, kp.constants.MAX_LINES) @ W
-    net = kp.network.KoopmanNetwork(input_dim, intrinsic_dim)
+    net = kp.network.KoopmanNetwork(input_dim, intrinsic_dim, model_early_stopping=False)
     net.train(train,
               autoencoder_epochs=autoencoder_epochs,
               autoencoder_batch_size=128,
@@ -22,7 +22,6 @@ def main(input_dim, intrinsic_dim, autoencoder_epochs, model_epochs):
               record=[(in_dist, "in-dist"), (out_dist, "out-dist")],
               record_dim=min(intrinsic_dim, 3)
               )
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
